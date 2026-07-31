@@ -384,6 +384,10 @@ const Viewer = forwardRef<ViewerRef, ViewerProps>(({
                         if (vol) {
                             // Ensure the name matches the seg id for lookup
                             vol.name = seg.id;
+                            // Ensure zero-value background voxels are transparent
+                            if (vol.cal_min === undefined || vol.cal_min === 0) {
+                                vol.cal_min = 1;
+                            }
                             nv.addVolume(vol);
                             loadedSegsRef.current.set(seg.id, { volumeIndex: -1 }); // index not used
                         }
