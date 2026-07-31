@@ -384,6 +384,8 @@ const Viewer = forwardRef<ViewerRef, ViewerProps>(({
                         if (vol) {
                             // Ensure the name matches the seg id for lookup
                             vol.name = seg.id;
+                            // Disable trilinear interpolation for discrete mask volumes (massive WebGL performance boost + sharp mask boundaries)
+                            vol.interpolation = false;
                             // Ensure zero-value background voxels are transparent
                             if (vol.cal_min === undefined || vol.cal_min === 0) {
                                 vol.cal_min = 1;
