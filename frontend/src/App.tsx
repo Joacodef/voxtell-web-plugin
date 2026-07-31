@@ -1,7 +1,7 @@
 
 import { useState, useRef, useEffect, type ChangeEvent } from 'react';
 import Viewer, { type ViewerRef, SLICE_TYPE } from './components/Viewer';
-import { Upload, Play, Download, Brain, Loader2, Layers, Eye, EyeOff, Trash2, Pencil, Save, X, Undo2, Eraser, PaintBucket, ChevronUp, PanelLeftClose, PanelLeftOpen, FileUp } from 'lucide-react';
+import { Upload, Play, Download, Brain, Loader2, Layers, Eye, EyeOff, Trash2, Pencil, Save, X, Undo2, Eraser, PaintBucket, ChevronUp, PanelLeftClose, PanelLeftOpen, FileUp, AlertCircle } from 'lucide-react';
 
 interface Segmentation {
   id: string;
@@ -36,6 +36,7 @@ function App() {
   const importMaskInputRef = useRef<HTMLInputElement>(null);
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [segmentations, setSegmentations] = useState<Segmentation[]>([]);
+  const [importError, setImportError] = useState<string | null>(null);
   const [prompt, setPrompt] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
   const [isDrawingMode, setIsDrawingMode] = useState(false);
@@ -75,6 +76,7 @@ function App() {
     // Reset state on new file
     setSegmentations([]);
     setShowDownloadMenu(false);
+    setImportError(null);
 
     // Clean up previous DICOM session
     if (sessionId) {
@@ -121,14 +123,27 @@ function App() {
     }
   };
 
-  const handleImportSegmentations = (e: ChangeEvent<HTMLInputElement>) => {
+  const handleImportSegmentations = async (e: ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files || e.target.files.length === 0) return;
+    setImportError(null);
     const files = Array.from(e.target.files);
+    const validSegs: Segmentation[] = [];
 
-    const newSegs: Segmentation[] = files.map((file, idx) => {
-      const colorObj = SEGMENTATION_COLORS[(segmentations.length + idx) % SEGMENTATION_COLORS.length];
+    for (let idx = 0; idx < files.length; idx++) {
+      const file = files[idx];
+
+      // Validate mask compatibility against loaded base volume
+      if (viewerRef.current?.validateSegmentationFile) {
+        const validation = await viewerRef.current.validateSegmentationFile(file);
+        if (!validation.isValid) {
+          setImportError(validation.reason || 'Incompatible segmentation mask file.');
+          continue; // Skip invalid mask
+        }
+      }
+
+      const colorObj = SEGMENTATION_COLORS[(segmentations.length + validSegs.length) % SEGMENTATION_COLORS.length];
       const cleanName = file.name.replace(/\.(nii\.gz|nii)$/i, '');
-      return {
+      validSegs.push({
         id: `${Date.now()}_${idx}`,
         file,
         prompt: cleanName,
@@ -136,10 +151,12 @@ function App() {
         color: colorObj.nv,
         displayColor: colorObj.css,
         type: 'imported',
-      };
-    });
+      });
+    }
 
-    setSegmentations(prev => [...prev, ...newSegs]);
+    if (validSegs.length > 0) {
+      setSegmentations(prev => [...prev, ...validSegs]);
+    }
     if (e.target) {
       e.target.value = '';
     }
@@ -368,24 +385,33 @@ function App() {
             onChange={handleImportSegmentations}
             className="hidden"
           />
-          <button
-            onClick={() => {
-              if (!imageFile) {
-                alert("Please upload a main scan (NIfTI or DICOM) first so the segmentation mask can be displayed over it.");
-                return;
-              }
-              importMaskInputRef.current?.click();
-            }}
-            className={`w-full py-2.5 px-3 border rounded-xl text-xs font-semibold flex items-center justify-center gap-2 transition-all shadow-sm ${
-              imageFile
-                ? 'border-slate-700 hover:border-indigo-500/60 bg-slate-800/40 hover:bg-slate-800/80 text-slate-300 cursor-pointer'
-                : 'border-slate-800 bg-slate-800/20 text-slate-500 cursor-pointer'
-            }`}
-            title={imageFile ? "Import existing NIfTI segmentation mask" : "Upload a base scan first"}
-          >
-            <FileUp className={`w-4 h-4 ${imageFile ? 'text-indigo-400' : 'text-slate-500'}`} />
-            Import Mask (.nii.gz)
-          </button>
+          {imageFile && (
+            <button
+              onClick={() => importMaskInputRef.current?.click()}
+              className="w-full py-2.5 px-3 border border-slate-700 hover:border-indigo-500/60 bg-slate-800/40 hover:bg-slate-800/80 text-slate-300 rounded-xl text-xs font-semibold flex items-center justify-center gap-2 transition-all shadow-sm"
+              title="Import existing NIfTI segmentation mask"
+            >
+              <FileUp className="w-4 h-4 text-indigo-400" />
+              Import Mask (.nii.gz)
+            </button>
+          )}
+
+          {/* Import Error Banner */}
+          {importError && (
+            <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-xl flex items-start gap-2.5 text-xs text-red-300 animate-in fade-in duration-200">
+              <AlertCircle className="w-4 h-4 text-red-400 flex-shrink-0 mt-0.5" />
+              <div className="flex-1 min-w-0 font-medium leading-relaxed">
+                {importError}
+              </div>
+              <button
+                onClick={() => setImportError(null)}
+                className="p-0.5 hover:bg-red-500/20 rounded text-red-400 hover:text-red-200 transition-colors flex-shrink-0"
+                title="Dismiss error"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Prompt Section */}

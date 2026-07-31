@@ -23,6 +23,7 @@ export interface ViewerRef {
     saveDrawing: () => Promise<void>;
     clearDrawing: () => void;
     drawUndo: () => void;
+    validateSegmentationFile: (file: File) => Promise<{ isValid: boolean; reason?: string }>;
 }
 
 const SLICE_OPTIONS: { label: string; value: SLICE_TYPE }[] = [
@@ -314,6 +315,44 @@ const Viewer = forwardRef<ViewerRef, ViewerProps>(({
         drawUndo: () => {
             if (!nv) return;
             nv.drawUndo();
+        },
+        validateSegmentationFile: async (file: File) => {
+            if (!nv || nv.volumes.length === 0) {
+                return { isValid: false, reason: 'No base volume image loaded in visualizer.' };
+            }
+            try {
+                const baseVol = nv.volumes[0];
+                const maskVol = await NVImage.loadFromFile({ file, name: 'temp_validation_check' });
+
+                const baseDims = baseVol.hdr?.dims ? Array.from(baseVol.hdr.dims.slice(1, 4)) : [];
+                const maskDims = maskVol.hdr?.dims ? Array.from(maskVol.hdr.dims.slice(1, 4)) : [];
+
+                if (
+                    baseDims.length >= 3 &&
+                    maskDims.length >= 3 &&
+                    (baseDims[0] !== maskDims[0] || baseDims[1] !== maskDims[1] || baseDims[2] !== maskDims[2])
+                ) {
+                    return {
+                        isValid: false,
+                        reason: `Dimension mismatch: Mask size (${maskDims.join('×')}) does not match main scan volume (${baseDims.join('×')}).`,
+                    };
+                }
+
+                const maxVal = maskVol.global_max ?? 0;
+                if (maxVal <= 0) {
+                    return {
+                        isValid: false,
+                        reason: 'Empty mask: The imported file contains no non-zero segmented voxels.',
+                    };
+                }
+
+                return { isValid: true };
+            } catch (e) {
+                return {
+                    isValid: false,
+                    reason: `Failed to parse NIfTI file: ${e instanceof Error ? e.message : 'Invalid format'}.`,
+                };
+            }
         }
     }), [nv, onSaveDrawing]);
 
@@ -384,12 +423,6 @@ const Viewer = forwardRef<ViewerRef, ViewerProps>(({
                         if (vol) {
                             // Ensure the name matches the seg id for lookup
                             vol.name = seg.id;
-                            // Disable trilinear interpolation for discrete mask volumes (massive WebGL performance boost + sharp mask boundaries)
-                            vol.interpolation = false;
-                            // Ensure zero-value background voxels are transparent
-                            if (vol.cal_min === undefined || vol.cal_min === 0) {
-                                vol.cal_min = 1;
-                            }
                             nv.addVolume(vol);
                             loadedSegsRef.current.set(seg.id, { volumeIndex: -1 }); // index not used
                         }
