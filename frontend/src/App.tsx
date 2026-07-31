@@ -368,16 +368,24 @@ function App() {
             onChange={handleImportSegmentations}
             className="hidden"
           />
-          {imageFile && (
-            <button
-              onClick={() => importMaskInputRef.current?.click()}
-              className="w-full py-2.5 px-3 border border-slate-700 hover:border-indigo-500/60 bg-slate-800/40 hover:bg-slate-800/80 text-slate-300 rounded-xl text-xs font-semibold flex items-center justify-center gap-2 transition-all shadow-sm"
-              title="Import existing NIfTI segmentation mask"
-            >
-              <FileUp className="w-4 h-4 text-indigo-400" />
-              Import Mask (.nii.gz)
-            </button>
-          )}
+          <button
+            onClick={() => {
+              if (!imageFile) {
+                alert("Please upload a main scan (NIfTI or DICOM) first so the segmentation mask can be displayed over it.");
+                return;
+              }
+              importMaskInputRef.current?.click();
+            }}
+            className={`w-full py-2.5 px-3 border rounded-xl text-xs font-semibold flex items-center justify-center gap-2 transition-all shadow-sm ${
+              imageFile
+                ? 'border-slate-700 hover:border-indigo-500/60 bg-slate-800/40 hover:bg-slate-800/80 text-slate-300 cursor-pointer'
+                : 'border-slate-800 bg-slate-800/20 text-slate-500 cursor-pointer'
+            }`}
+            title={imageFile ? "Import existing NIfTI segmentation mask" : "Upload a base scan first"}
+          >
+            <FileUp className={`w-4 h-4 ${imageFile ? 'text-indigo-400' : 'text-slate-500'}`} />
+            Import Mask (.nii.gz)
+          </button>
         </div>
 
         {/* Prompt Section */}
