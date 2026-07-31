@@ -1,7 +1,7 @@
 
 import { useState, useRef, useEffect, type ChangeEvent } from 'react';
 import Viewer, { type ViewerRef, SLICE_TYPE } from './components/Viewer';
-import { Upload, Play, Download, Brain, Loader2, Layers, Eye, EyeOff, Trash2, Pencil, Save, X, Undo2, Eraser, PaintBucket, ChevronUp, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
+import { Upload, Play, Download, Brain, Loader2, Layers, Eye, EyeOff, Trash2, Pencil, Save, X, Undo2, Eraser, PaintBucket, ChevronUp, PanelLeftClose, PanelLeftOpen, FileUp } from 'lucide-react';
 
 interface Segmentation {
   id: string;
@@ -10,7 +10,7 @@ interface Segmentation {
   isVisible: boolean;
   color: string;      // NiiVue colormap name
   displayColor: string; // CSS color for UI
-  type: 'prompt' | 'drawn'; // Source of segmentation
+  type: 'prompt' | 'drawn' | 'imported'; // Source of segmentation
 }
 
 const SEGMENTATION_COLORS = [
@@ -33,6 +33,7 @@ const PEN_COLORS = [
 function App() {
   const viewerRef = useRef<ViewerRef>(null);
   const downloadMenuRef = useRef<HTMLDivElement>(null);
+  const importMaskInputRef = useRef<HTMLInputElement>(null);
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [segmentations, setSegmentations] = useState<Segmentation[]>([]);
   const [prompt, setPrompt] = useState('');
@@ -117,6 +118,30 @@ function App() {
       // NIfTI upload - existing behavior
       setInputFormat('nifti');
       setImageFile(file);
+    }
+  };
+
+  const handleImportSegmentations = (e: ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files || e.target.files.length === 0) return;
+    const files = Array.from(e.target.files);
+
+    const newSegs: Segmentation[] = files.map((file, idx) => {
+      const colorObj = SEGMENTATION_COLORS[(segmentations.length + idx) % SEGMENTATION_COLORS.length];
+      const cleanName = file.name.replace(/\.(nii\.gz|nii)$/i, '');
+      return {
+        id: `${Date.now()}_${idx}`,
+        file,
+        prompt: cleanName,
+        isVisible: true,
+        color: colorObj.nv,
+        displayColor: colorObj.css,
+        type: 'imported',
+      };
+    });
+
+    setSegmentations(prev => [...prev, ...newSegs]);
+    if (e.target) {
+      e.target.value = '';
     }
   };
 
@@ -301,7 +326,7 @@ function App() {
         </div>
 
         {/* Upload Section */}
-        <div className="space-y-4">
+        <div className="space-y-3">
           <h2 className="text-sm uppercase tracking-wider text-slate-500 font-semibold text-[10px]">Data Input</h2>
 
           <div className="relative group">
@@ -333,6 +358,26 @@ function App() {
               </div>
             </div>
           </div>
+
+          {/* Import Existing Mask Button */}
+          <input
+            type="file"
+            ref={importMaskInputRef}
+            accept=".nii,.nii.gz"
+            multiple
+            onChange={handleImportSegmentations}
+            className="hidden"
+          />
+          {imageFile && (
+            <button
+              onClick={() => importMaskInputRef.current?.click()}
+              className="w-full py-2.5 px-3 border border-slate-700 hover:border-indigo-500/60 bg-slate-800/40 hover:bg-slate-800/80 text-slate-300 rounded-xl text-xs font-semibold flex items-center justify-center gap-2 transition-all shadow-sm"
+              title="Import existing NIfTI segmentation mask"
+            >
+              <FileUp className="w-4 h-4 text-indigo-400" />
+              Import Mask (.nii.gz)
+            </button>
+          )}
         </div>
 
         {/* Prompt Section */}
@@ -493,16 +538,35 @@ function App() {
         {/* Segmentations List */}
         {segmentations.length > 0 && (
           <div className="space-y-4 flex-1 overflow-y-auto">
-            <h2 className="text-sm uppercase tracking-wider text-slate-500 font-semibold text-[10px]">Segmentations</h2>
+            <div className="flex items-center justify-between">
+              <h2 className="text-sm uppercase tracking-wider text-slate-500 font-semibold text-[10px]">Segmentations ({segmentations.length})</h2>
+              <button
+                onClick={() => importMaskInputRef.current?.click()}
+                className="text-[10px] text-indigo-400 hover:text-indigo-300 flex items-center gap-1 font-semibold uppercase tracking-wider transition-colors"
+                title="Import additional NIfTI mask"
+              >
+                <FileUp className="w-3 h-3" />
+                Import
+              </button>
+            </div>
             <div className="space-y-2">
               {segmentations.map((seg) => (
                 <div key={seg.id} className="p-3 bg-slate-800/50 border border-slate-700 rounded-xl flex items-center justify-between group hover:border-slate-600 transition-all">
                   <div className="flex items-center gap-3 overflow-hidden">
                     <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: seg.displayColor }} />
                     <div className="min-w-0">
-                      <p className="text-sm font-medium text-slate-300 truncate" title={seg.prompt}>
-                        {seg.prompt}
-                      </p>
+                      <div className="flex items-center gap-1.5">
+                        <p className="text-sm font-medium text-slate-300 truncate" title={seg.prompt}>
+                          {seg.prompt}
+                        </p>
+                        <span className={`text-[9px] px-1.5 py-0.2 rounded-md font-bold uppercase tracking-wider border flex-shrink-0 ${
+                          seg.type === 'prompt' ? 'bg-indigo-500/20 text-indigo-300 border-indigo-500/30' :
+                          seg.type === 'drawn' ? 'bg-amber-500/20 text-amber-300 border-amber-500/30' :
+                          'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
+                        }`}>
+                          {seg.type === 'prompt' ? 'AI' : seg.type === 'drawn' ? 'Drawn' : 'Imported'}
+                        </span>
+                      </div>
                     </div>
                   </div>
                   <div className="flex items-center gap-1">
